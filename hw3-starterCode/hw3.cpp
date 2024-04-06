@@ -225,7 +225,7 @@ void ray_triangle_intersect(Ray& r, double& t, int& t_num, glm::dvec3 &barycentr
     return;
 }
 
-bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_point=Vertex()) {
+bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_point) {
     double t0 = max_t, t1 = max_t;
     int s_num = -1, t_num = -1;
     glm::dvec3 barycentric;
@@ -259,11 +259,12 @@ bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_poin
 
 glm::dvec3 cast_shadow_ray(glm::dvec3 V, Vertex intersect_point) {
     glm::dvec3 col(0.0, 0.0, 0.0);
+    Vertex tmp_point;
     for (int i = 0; i < num_lights; i++) {
         Ray light_ray;
         light_ray.origin = intersect_point.position;
         light_ray.direction = glm::normalize(lights[i].position - intersect_point.position);
-        if (is_intersect(light_ray, true, glm::length(lights[i].position-intersect_point.position))) {
+        if (is_intersect(light_ray, true, glm::length(lights[i].position - intersect_point.position), tmp_point)) {
             continue;
         }
         glm::dvec3 R = 2.0 * glm::dot(light_ray.direction, intersect_point.normal) * intersect_point.normal - light_ray.direction;
@@ -276,16 +277,6 @@ glm::dvec3 cast_shadow_ray(glm::dvec3 V, Vertex intersect_point) {
 //Get color of each node
 glm::dvec3 get_color(double x, double y) {
     /*
-    * 
-    * 
-    * 
-    * 
-    * 
-    * 
-    * 
-    * 
-    * 
-    * 
     Does the origin really 000 ?
     */
     Ray r;
