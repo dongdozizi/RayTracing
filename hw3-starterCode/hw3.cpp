@@ -77,11 +77,11 @@ struct Ray{
 
 struct Vertex
 {
-    glm::dvec3 position;
-    glm::dvec3 color_diffuse;
-    glm::dvec3 color_specular;
-    glm::dvec3 normal;
-    double shininess;
+    glm::dvec3 position = glm::dvec3(0.0, 0.0, 0.0);
+    glm::dvec3 color_diffuse=glm::dvec3(0.0, 0.0, 0.0);
+    glm::dvec3 color_specular= glm::dvec3(0.0, 0.0, 0.0);
+    glm::dvec3 normal = glm::dvec3(0.0, 0.0, 0.0);
+    double shininess = 0.0;
 };
 
 struct Triangle
@@ -172,10 +172,6 @@ solving this linear equation we get:
     yamma=1-alpha-beta
 */
 bool point_in_triangle(double x, double y, double x0, double y0, double x1, double y1, double x2, double y2, double area, glm::dvec3& barycentric) {
-    //printf("p = (%f,%f)\n", x, y);
-    //printf("p0 = (%f,%f)\n", x0, y0);
-    //printf("p1 = (%f,%f)\n", x1, y1);
-    //printf("p2 = (%f,%f)\n", x2, y2);
     x -= x2, x0 -= x2, x1 -= x2;
     y -= y2, y0 -= y2, y1 -= y2;
     if (abs(area) < epsilon) {
@@ -206,13 +202,10 @@ void ray_triangle_intersect(Ray& r, double& t, int& t_num, glm::dvec3 &barycentr
             continue;
         }
         t0 = -(glm::dot(triangles[i].normal, r.origin) + triangles[i].d) / dot_nd;
-        //printf("i = %d\n", i);
-        //printf("t0 = %f\n",t0);
         if (t0 < epsilon || t0 >= t) {
             continue;
         }
         intersect_point = r.origin + t0 * r.direction;
-        //printf("intersect point = %f %f %f\n", intersect_point.x, intersect_point.y, intersect_point.z);
         if (!point_in_triangle(intersect_point[triangles[i].projVec[0]], intersect_point[triangles[i].projVec[1]], 
             triangles[i].v[0].position[triangles[i].projVec[0]], triangles[i].v[0].position[triangles[i].projVec[1]],
             triangles[i].v[1].position[triangles[i].projVec[0]], triangles[i].v[1].position[triangles[i].projVec[1]],
@@ -221,7 +214,6 @@ void ray_triangle_intersect(Ray& r, double& t, int& t_num, glm::dvec3 &barycentr
             tmpBarycentric)) {
             continue;
         }
-        //printf("barycentric = %f %f %f\n", tmpBarycentric.x, tmpBarycentric.y, tmpBarycentric.z);
         t = t0;
         t_num = i;
         barycentric = tmpBarycentric;
@@ -242,8 +234,6 @@ bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_poin
     if (s_num == -1 && t_num == -1) {
         return false;
     }
-    //printf("s_num = %d\nt_num = %d\n", s_num, t_num);
-    //printf("t0 = %f\nt1 = %f\n", t0, t1);
     if (!is_shadow_ray) {
         if (t_num == -1 || (s_num != -1 && t0 < t1)) {
             intersect_point.position = r.origin + t0 * r.direction;
@@ -260,21 +250,19 @@ bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_poin
                 intersect_point.normal += barycentric[i] * triangles[t_num].v[i].normal;
                 intersect_point.shininess += barycentric[i] * triangles[t_num].v[i].shininess;
             }
-            glm::normalize(intersect_point.normal);
+            glm::dvec3 pos(0.0, 0.0, 0.0);
+            intersect_point.normal = glm::normalize(intersect_point.normal);
         }
     }
     return true;
 }
 
-glm::dvec3 is_shadow_ray(glm::dvec3 V, Vertex intersect_point) {
+glm::dvec3 cast_shadow_ray(glm::dvec3 V, Vertex intersect_point) {
     glm::dvec3 col(0.0, 0.0, 0.0);
     for (int i = 0; i < num_lights; i++) {
         Ray light_ray;
         light_ray.origin = intersect_point.position;
         light_ray.direction = glm::normalize(lights[i].position - intersect_point.position);
-        //printf("Light ray origin = %f %f %f\n", intersect_point.position.x, intersect_point.position.y, intersect_point.position.z);
-        //printf("Light ray direction = ");
-        //for (int j = 0; j < 3; j++) printf("%f ", light_ray.direction[j]); printf("\n");
         if (is_intersect(light_ray, true, glm::length(lights[i].position-intersect_point.position))) {
             continue;
         }
@@ -300,7 +288,6 @@ glm::dvec3 get_color(double x, double y) {
     * 
     Does the origin really 000 ?
     */
-    //printf("       direct = %f %f\n", x, y);
     Ray r;
     r.origin = glm::dvec3(0.0, 0.0, 0.0); 
     r.direction = glm::normalize(glm::dvec3(x, y, -1.0));
@@ -309,10 +296,7 @@ glm::dvec3 get_color(double x, double y) {
     if (!is_intersect(r, false, infinity, intersect_point)) {
         return colorBackground;
     }
-    //printf("        Cast ray\n");
-    //printf("        Cast ray intersect_point = ");
-    //for (int i = 0; i < 3; i++) printf("%f ", intersect_point.position[i]); printf("\n");
-    glm::dvec3 col=is_shadow_ray(-r.direction,intersect_point);
+    glm::dvec3 col=cast_shadow_ray(-r.direction,intersect_point);
     return col;
 }
 
@@ -323,22 +307,7 @@ void draw_scene()
     double dx=2.0*tan(fov/2.0)* aspect_ratio /(1.0*WIDTH), dy = 2.0*tan(fov/2.0)/(1.0*HEIGHT);
     xMin += dx / 2.0, yMin += dy / 2.0;
 
-    //for (unsigned int x = 170; x < 180; x++)
-    //{
-    //    glPointSize(2.0);
-    //    glBegin(GL_POINTS);
-    //    for (unsigned int y = 420; y < 435; y++)
-    //    {
-    //        glm::dvec3 col = get_color(xMin + dx * x, yMin + dy * y) + ambient_light;
-    //        for (int i = 0; i < 3; i++) {
-    //            col[i] = max(min(col[i], 1.0), 0.0);
-    //        }
-    //        plot_pixel(x, y, int(col.r * 255.0), int(col.g * 255.0), int(col.b * 255.0));
-    //        //Sleep(100000000);
-    //    }
-    //    glEnd();
-    //    glFlush();
-    //}
+    double current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001;
 
     for(unsigned int x=0; x<WIDTH; x++)
     {
@@ -355,6 +324,9 @@ void draw_scene()
         glEnd();
         glFlush();
     }
+
+    current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001 - current_time;
+    printf("Cost time: %f s\n", current_time);
     printf("Done!\n"); fflush(stdout);
 }
 
@@ -537,10 +509,10 @@ void initTriangle() {
         t.normal = glm::normalize(glm::cross(t.v[2].position - t.v[0].position, t.v[1].position - t.v[0].position));
         t.d = -glm::dot(t.normal, t.v[0].position);
         // Do the projection on the plane, there must be one of the triangles[i].normal that larger than 0.5
-        if (t.normal.x > 0.5) {
+        if (abs(t.normal.x) > 0.5) {
             t.projVec[0] = 1, t.projVec[1] = 2;
         }
-        else if (t.normal.y > 0.5) {
+        else if (abs(t.normal.y) > 0.5) {
             t.projVec[0] = 0, t.projVec[1] = 2;
         }
         else {
@@ -548,12 +520,6 @@ void initTriangle() {
         }
         t.area = (t.v[0].position[t.projVec[0]] - t.v[2].position[t.projVec[0]]) * (t.v[1].position[t.projVec[1]] - t.v[2].position[t.projVec[1]]) -
             (t.v[1].position[t.projVec[0]] - t.v[2].position[t.projVec[0]]) * (t.v[0].position[t.projVec[1]] - t.v[2].position[t.projVec[1]]);
-        //printf("pos0 : "); for (int j = 0; j < 3; j++) printf("%f ", t.v[0].position[j]); printf("\n");
-        //printf("pos1 : "); for (int j = 0; j < 3; j++) printf("%f ", t.v[1].position[j]); printf("\n");
-        //printf("pos2 : "); for (int j = 0; j < 3; j++) printf("%f ", t.v[2].position[j]); printf("\n");
-        //printf("area = %f\n", t.area);
-        //printf("normal = %f %f %f\n", t.normal.x, t.normal.y, t.normal.z);
-        //printf("projVec = %d %d\n", t.projVec[0], t.projVec[1]);
     }
 }
 
@@ -588,4 +554,5 @@ int main(int argc, char ** argv)
     init();
     glutMainLoop();
 }
+
 

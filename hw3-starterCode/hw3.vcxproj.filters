@@ -15,10 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="hw3.cpp">
+    <ClCompile Include="..\external\imageIO\imageIO.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\external\imageIO\imageIO.cpp">
+    <ClCompile Include="hw3.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
