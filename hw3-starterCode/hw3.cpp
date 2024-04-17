@@ -58,8 +58,8 @@ char * filename = NULL;
 #define MODE_JPEG 2
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 800
-#define HEIGHT 450
+#define WIDTH 640
+#define HEIGHT 480
 
 int mode = MODE_DISPLAY;
 
@@ -132,7 +132,7 @@ struct Light
     glm::dvec3 p[4];
 };
 
-int timesOfTriangleIntersect = 0, timesOfSphereIntersect = 0, timesOfBBIntersect = 0;
+long long timesOfTriangleIntersect = 0, timesOfSphereIntersect = 0, timesOfBBIntersect = 0;
 
 struct BVHBoundBox {
     glm::dvec3 p[2];
@@ -670,7 +670,7 @@ void draw_scene()
             y0 = (1.0 * n2) / (1.0 * d2) - 0.5;
             printf("Sample time:%d x0 y0 %f %f\n",sampleTime, x0, y0);
 
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
             for (int x = 0; x < WIDTH; x++)
             {
                 for (unsigned int y = 0; y < HEIGHT; y++)
@@ -698,9 +698,10 @@ void draw_scene()
     else {
         xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(1.0*numAntialiasing);
         double px=dx/(1.0*numAntialiasing),py=dy/(1.0*numAntialiasing);
-//#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
         for (int x = 0; x < WIDTH; x++)
         {
+            printf("%d\n", x);
             for (int y = 0; y < HEIGHT; y++)
             {
                 glm::dvec3 col(0.0,0.0,0.0);
@@ -733,10 +734,10 @@ void draw_scene()
 
     current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001 - current_time;
     printf("Cost time: %f s\n", current_time);
-    printf("Total triangle intersection %d\n",timesOfTriangleIntersect);
-    printf("Total sphere intersection %d\n",timesOfSphereIntersect);
+    printf("Total triangle intersection %lld\n",timesOfTriangleIntersect);
+    printf("Total sphere intersection %lld\n",timesOfSphereIntersect);
     if (useBVH) {
-        printf("Total AABB intersection %d\n", timesOfBBIntersect);
+        printf("Total AABB intersection %lld\n", timesOfBBIntersect);
     }
     printf("Done!\n"); fflush(stdout);
 }
@@ -1188,13 +1189,14 @@ int main(int argc, char ** argv)
         mode = MODE_DISPLAY;
     }
 
-    fov = 50.0 / 180.0 * PI;
-    useMonteCarlo = true;
-    numAntialiasing = 1;
-    numSoftShadow=1;
+    fov = 60.0 / 180.0 * PI;
+    numMonteCarlo = 100;
+    useMonteCarlo = false;
+    numAntialiasing = 3;
+    numSoftShadow=20;
     radiusSoftShadow=0.2;
     useBVH = true;
-    numRecursive = 0;
+    numRecursive = 2;
 
     glutInit(&argc,argv);
     if (useMonteCarlo) {
