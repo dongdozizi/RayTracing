@@ -48,7 +48,7 @@
 using namespace std;
 
 #define MAX_TRIANGLES 20000
-#define MAX_SPHERES 100
+#define MAX_SPHERES 1000
 #define MAX_LIGHTS 100
 
 char * filename = NULL;
@@ -1191,7 +1191,7 @@ int main(int argc, char ** argv)
 
     fov = 60.0 / 180.0 * PI;
     numMonteCarlo = 100;
-    useMonteCarlo = false;
+    useMonteCarlo = true;
     numAntialiasing = 3;
     numSoftShadow=20;
     radiusSoftShadow=0.2;
@@ -1213,8 +1213,45 @@ int main(int argc, char ** argv)
     }
     initTriangle();
 
+    //for (int i = 0; i < num_triangles; i++) {
+    //    print(triangles[i].normal, "normal");
+    //}
+    //glm::dvec4 get;
+    //get.x = triangles[0].normal[0];
+    //get.y = triangles[0].normal[1];
+    //get.z = triangles[0].normal[2];
+    //get.w=glm::dot(triangles[0].normal, triangles[0].v[0].position);
+    //glm::dvec3 yax = -triangles[0].normal;
+    //glm::dvec3 xax(1.0, 0.0, 0.0);
+    //glm::dvec3 zax = glm::normalize(glm::cross(xax, yax));
+    //vector<glm::dvec3> ve;
+    //glm::dvec3 base(-3.0, -11.0, (-get.x * (-3.0) - get.z * (-11.0) + get.w) / get.y);
+    //double r = 0.2;
+    //base -= yax * r;
+    //double tph = r * 2.0 * sqrt(6.0) / 3.0;
+    //for (int i = 0; i < 15; i++) {
+    //    glm::dvec3 base2 = base + yax * tph * (1.0 * i) + xax * r * (0.5 * i) + zax * r * (0.5 * i);
+    //    for (int j = 0; j < (15 - i-1); j++) {
+    //        glm::dvec3 base3 = base2 + r * sqrt(3.0) * zax * (1.0 * j) + r * xax;
+    //        for (int k = 0; k < (15 - i-j-1); j++) {
+    //            glm::dvec3 base4 = base3 + 2.0 * r * xax;
+    //            ve.push_back(base4);
+    //        }
+    //    }
+    //}
+    //for (int i = 0; i < 1000; i++) printf("-");
+    //printf("%d\n", ve.size());
+    //for (int i = 0; i < ve.size(); i++) {
+    //    printf("sphere\n");
+    //    printf("pos: %f %f %f\n", ve[i][0], ve[i][1], ve[i][2]);
+    //    printf("rad: 0.2\n");
+    //    printf("dif: %f %f %f\n", distrib(eng), distrib(eng), distrib(eng));
+    //    printf("rou: %f\n", distrib(eng));
+    //    printf("met: %f\n", distrib(eng));
+    //}
+    //print(spheres[0].position + triangles[0].normal, "pos");
+    //    exit(0);
     printf("There are %d Triangles, %d Spheres, %d Lights\n", num_triangles, num_spheres, num_lights);
-
     if (useBVH) {
         initBVHTriangle();
         printf("Init BVH triangle success\n");
