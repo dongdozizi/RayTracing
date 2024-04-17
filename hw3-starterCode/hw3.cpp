@@ -58,8 +58,8 @@ char * filename = NULL;
 #define MODE_JPEG 2
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 800
+#define HEIGHT 450
 
 int mode = MODE_DISPLAY;
 
@@ -132,7 +132,7 @@ struct Light
     glm::dvec3 p[4];
 };
 
-int timesOfTriangleIntersect=0,timesOfSphereIntersect=0;
+int timesOfTriangleIntersect = 0, timesOfSphereIntersect = 0, timesOfBBIntersect = 0;
 
 struct BVHBoundBox {
     glm::dvec3 p[2];
@@ -156,7 +156,7 @@ bool useMonteCarlo = false;
 // The sample size of monte carlo
 int numMonteCarlo = 100;
 // Monte carlo color buffer
-glm::dvec3 monteCarloBuffer[HEIGHT][WIDTH];
+glm::dvec3 myBuffer[HEIGHT][WIDTH];
 // For random number
 std::random_device rd;
 std::mt19937 eng;  // or eng(r()); for non-deterministic random number
@@ -205,6 +205,7 @@ bool ray_sphere_intersect(Ray& r, double& t,Sphere &s) {
 }
 
 bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
+    timesOfBBIntersect++;
     glm::dvec3 dirfrac;
     if (abs(r.direction.x) <= epsilon) dirfrac.x = 1e9;
     else dirfrac.x = 1.0f / r.direction.x;
@@ -635,7 +636,7 @@ void draw_scene()
         xMin += dx / 2.0, yMin += dy / 2.0;
         for (unsigned int x = 0; x < WIDTH; x++){
             for (unsigned int y = 0; y < HEIGHT; y++){
-                monteCarloBuffer[y][x] = glm::dvec3(0.0, 0.0, 0.0);
+                myBuffer[y][x] = glm::dvec3(0.0, 0.0, 0.0);
             }
         }
         int b1 = 2, b2 = 3, n1 = 0, d1 = 1, n2 = 0, d2 = 1, x1, y1, x2, y2;
@@ -668,9 +669,9 @@ void draw_scene()
             }
             y0 = (1.0 * n2) / (1.0 * d2) - 0.5;
             printf("Sample time:%d x0 y0 %f %f\n",sampleTime, x0, y0);
-            glPointSize(2.0);
-            glBegin(GL_POINTS);
-            for (unsigned int x = 0; x < WIDTH; x++)
+
+#pragma omp parallel for
+            for (int x = 0; x < WIDTH; x++)
             {
                 for (unsigned int y = 0; y < HEIGHT; y++)
                 {
@@ -678,9 +679,15 @@ void draw_scene()
                     r.origin = camera_pos;
                     r.direction = glm::normalize(glm::dvec3(xMin + dx * (x0 + x), yMin + dy * (y0 + y), -1.0));
                     //printf("x y %d %d\n", x, y);
-                    monteCarloBuffer[y][x] += get_color_monte_carlo(r);
-                    glm::dvec3 col = monteCarloBuffer[y][x] / (1.0 * (1.0 + sampleTime));
-                    col=col/(1.0+col);
+                    myBuffer[y][x] += get_color_monte_carlo(r);
+                }
+            }
+            glPointSize(2.0);
+            glBegin(GL_POINTS);
+            for (unsigned int x = 0; x < WIDTH; x++) {
+                for (unsigned int y = 0; y < HEIGHT; y++) {
+                    glm::dvec3 col = myBuffer[y][x] / (1.0 * (1.0 + sampleTime));
+                    col = col / (1.0 + col);
                     plot_pixel(x, y, int(col.r * 255.0), int(col.g * 255.0), int(col.b * 255.0));
                 }
             }
@@ -691,10 +698,9 @@ void draw_scene()
     else {
         xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(1.0*numAntialiasing);
         double px=dx/(1.0*numAntialiasing),py=dy/(1.0*numAntialiasing);
+//#pragma omp parallel for
         for (int x = 0; x < WIDTH; x++)
         {
-            glPointSize(2.0);
-            glBegin(GL_POINTS);
             for (int y = 0; y < HEIGHT; y++)
             {
                 glm::dvec3 col(0.0,0.0,0.0);
@@ -708,17 +714,30 @@ void draw_scene()
                 }
                 col/=(1.0*numAntialiasing*numAntialiasing);
                 col=glm::max(glm::min(col,1.0),0.0);
+                myBuffer[y][x] = col;
+            }
+
+        }
+
+        glPointSize(2.0);
+        glBegin(GL_POINTS);
+        for (int x = 0; x < WIDTH; x++) {
+            for (int y = 0; y < HEIGHT; y++) {
+                glm::dvec3 col = myBuffer[y][x];
                 plot_pixel(x, y, int(col.r * 255.0), int(col.g * 255.0), int(col.b * 255.0));
             }
-            glEnd();
-            glFlush();
         }
+        glEnd();
+        glFlush();
     }
 
     current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001 - current_time;
     printf("Cost time: %f s\n", current_time);
     printf("Total triangle intersection %d\n",timesOfTriangleIntersect);
     printf("Total sphere intersection %d\n",timesOfSphereIntersect);
+    if (useBVH) {
+        printf("Total AABB intersection %d\n", timesOfBBIntersect);
+    }
     printf("Done!\n"); fflush(stdout);
 }
 
@@ -1169,7 +1188,7 @@ int main(int argc, char ** argv)
         mode = MODE_DISPLAY;
     }
 
-    fov = 60.0 / 180.0 * PI;
+    fov = 50.0 / 180.0 * PI;
     useMonteCarlo = true;
     numAntialiasing = 1;
     numSoftShadow=1;
