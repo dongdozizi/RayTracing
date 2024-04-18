@@ -48,7 +48,7 @@
 using namespace std;
 
 #define MAX_TRIANGLES 20000
-#define MAX_SPHERES 1000
+#define MAX_SPHERES 100
 #define MAX_LIGHTS 100
 
 char * filename = NULL;
@@ -624,8 +624,9 @@ glm::dvec3 get_color_monte_carlo(Ray &r) {
 }
 
 void calculateYNormal(int id,double xMin,double dx,double px,double yMin,double dy,double py){
-    int div=WIDTH/8;if(WIDTH%8) div++;
+    int div=WIDTH/16;if(WIDTH%16) div++;
     for(int x=id*div;x<min((id+1)*div,WIDTH);x++){
+        printf("%d\n",x);
         for (int y = 0; y < HEIGHT; y++){
             glm::dvec3 col(0.0,0.0,0.0);
             for(int i=0;i<numAntialiasing;i++){
@@ -643,10 +644,6 @@ void calculateYNormal(int id,double xMin,double dx,double px,double yMin,double 
     }
 }
 
-/*
-
-*/
-//MODIFY THIS FUNCTION
 void draw_scene()
 {
     double xMin = -aspect_ratio * tan(fov / 2.0), yMin = -tan(fov / 2.0);
@@ -720,11 +717,11 @@ void draw_scene()
         xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(1.0*numAntialiasing);
         double px=dx/(1.0*numAntialiasing),py=dy/(1.0*numAntialiasing);
         vector<thread> threads;
-
-        for(int x=0;x<8;x++){
+//#pragma omp parallel for schedule(dynamic, 1)
+        for(int x=0;x<16;x++){
             calculateYNormal(x,xMin,dx,px,yMin,dy,py);
         }
-        //  for (int x = 0; x < 8; x++){
+        // for (int x = 0; x < 16; x++){
         //     threads.emplace_back(calculateYNormal,x,xMin,dx,px,yMin,dy,py);
         // }
         // for(auto &thread:threads){
@@ -740,7 +737,6 @@ void draw_scene()
         }
         glEnd();
         glFlush();
-
     }
 
     current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001 - current_time;
@@ -1066,8 +1062,7 @@ void initAreaLight(){
 
 int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,vector<glm::dvec3> &center) {
     BVHBoundBox bb;
-    bb.p[0]=glm::dvec3(infinity);
-    bb.p[1]=glm::dvec3(-infinity);
+    bb.p[0]=bb.p[1]=glm::dvec3(0.0);
 
     for (int i = 0; i < vx.size(); i++) {
         for (int j = 0; j < 3; j++) {
@@ -1104,7 +1099,7 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         }
 
         // Sort them with axis
-        vector<pair<double,int> > vxp(vx.size());
+        vector<pair<int,int> > vxp(vx.size());
         for(int i=0;i<vx.size();i++){
             vxp[i].first=center[vx[i]][axis];
             vxp[i].second=vx[i];
@@ -1113,12 +1108,11 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         for(int i=0;i<vxp.size();i++){
             vx[i]=vxp[i].second;
         }
-
         int pc=vxp.size()/2;
-        // double mid=(vxp[vxp.size()-1].first+vxp[0].first)*0.5;
+        // double mid=(vxp[vxp.size()-1].first-vxp[0].first)*0.5;
         // for(int i=0;i<vxp.size();i++){
         //     if(vxp[i].first>=mid){
-        //         pc=max(i,1);
+        //         pc=i;
         //         break;
         //     }
         // }
@@ -1130,7 +1124,6 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         for (int i = pc; i < vx.size(); i++) {
             vr.push_back(vx[i]);
         }
-
         vx.clear();
         int left=buildBVH(tree, vl, bbList, center);
         tree.childs[cur].push_back(left);
@@ -1189,51 +1182,8 @@ void initTotalLightArea() {
     printf("Total light area is %f\n", totalLightArea);
 }
 
-void generateScene(){
-    glm::dvec4 get(0.000000,-0.987823,-0.155582,2.904199);
-    glm::dvec3 yax(get.x,get.y,get.z);yax=-yax;
-    glm::dvec3 xax(1.0, 0.0, 0.0);
-    glm::dvec3 zax = glm::normalize(glm::cross(xax, yax));
-    vector<glm::dvec3> ve;
-    glm::dvec3 base(-1.8, (-get.x * (-1.8) - get.z * (-7.0) + get.w) / get.y,-7.0);
-    double r = 0.2;
-    base += yax * r;
-    print(base,"base");
-    double tph = r * 2.0 * sqrt(6.0) / 3.0;
-    for (int i = 0; i < 10; i++) {
-       glm::dvec3 base2 = base + yax * tph * (1.0 * i) + xax * r * (1.0 * i) + zax * r * (1.0 * i);
-       print(base2," --- base2");
-       for (int j = 0; j < (10 - i); j++) {
-           glm::dvec3 base3 = base2 + r * sqrt(3.0) * zax * (1.0 * j) + r * xax*(1.0*j);
-           print(base3,"--- --- base3");
-           for (int k = 0; k < (10 - i-j); k++) {
-               glm::dvec3 base4 = base3 + 2.0 * r * xax*(1.0*k);
-               print(base4,"--- --- --- base4");
-               ve.push_back(base4);
-           }
-       }
-    }
-    /*
-    n*(n+1)/2
-    n*n/2+n/2
-    n*(n+1)*(2*n+1)/12+n*(n+1)/4;
-    */
-    for (int i = 0; i < 1000; i++) printf("-");
-    printf("\n%d\n", ve.size());
-    for (int i = 0; i < ve.size(); i++) {
-       printf("sphere\n");
-       printf("pos: %f %f %f\n", ve[i][0], ve[i][1], ve[i][2]);
-       printf("rad: %f\n",r);
-       printf("dif: %f %f %f\n", distrib(eng), distrib(eng), distrib(eng));
-       printf("rou: %f\n", distrib(eng));
-       printf("met: %f\n", distrib(eng));
-    }
-       exit(0);
-}
-
 int main(int argc, char ** argv)
 {
-    //generateScene();
     if ((argc < 2) || (argc > 3)){    
         printf ("Usage: %s <input scenefile> [output jpegname]\n", argv[0]);
         exit(0);
@@ -1252,7 +1202,7 @@ int main(int argc, char ** argv)
     numAntialiasing = 3;
     numSoftShadow=20;
     radiusSoftShadow=0.2;
-    useBVH =true;
+    useBVH = false;
     numRecursive = 2;
 
     glutInit(&argc,argv);
@@ -1271,12 +1221,12 @@ int main(int argc, char ** argv)
     initTriangle();
 
     printf("There are %d Triangles, %d Spheres, %d Lights\n", num_triangles, num_spheres, num_lights);
+
     if (useBVH) {
         initBVHTriangle();
         printf("Init BVH triangle success\n");
         initBVHSphere();
         printf("Init BVH sphere success!\n");
-        //exit(0);
     }
 
     glutInitDisplayMode(GLUT_RGBA | GLUT_SINGLE);
