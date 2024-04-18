@@ -81,6 +81,7 @@ int numAntialiasing = 3;
 int numSoftShadow = 20;
 double radiusSoftShadow=0.3;
 bool useBVH = false;
+int numThreads = 8;
 
 unsigned char buffer[HEIGHT][WIDTH][3];
 
@@ -175,6 +176,7 @@ void print(glm::dvec3 pt, char s[]) {
     printf("%s %f %f %f\n", s, pt[0], pt[1], pt[2]);
 }
 
+// Intersection of sphere and ray
 bool ray_sphere_intersect(Ray& r, double& t,Sphere &s) {
     timesOfSphereIntersect++;
     double dx, dy, dz, b, c, delta;
@@ -204,6 +206,7 @@ bool ray_sphere_intersect(Ray& r, double& t,Sphere &s) {
     return false;
 }
 
+// Intersection of sphere and an bounding box
 bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
     timesOfBBIntersect++;
     glm::dvec3 dirfrac;
@@ -241,6 +244,7 @@ bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
     return true;
 }
 
+// The BVH search for sphere intersection
 void calc_sphere_BVH(int cur, Ray& r, double& t, int& s_num, bool is_shadow_ray) {
     if (BVHSphere.isChild[cur]) {
         for (int i = 0; i < BVHSphere.childs[cur].size(); i++) {
@@ -276,6 +280,7 @@ void calc_sphere_BVH(int cur, Ray& r, double& t, int& s_num, bool is_shadow_ray)
     }
 }
 
+// Calculate sphere intersection
 void calc_sphere(Ray &r, double& t, int &s_num,bool is_shadow_ray) {
     if (useBVH) {
         calc_sphere_BVH(0,r, t, s_num, is_shadow_ray);
@@ -294,6 +299,7 @@ void calc_sphere(Ray &r, double& t, int &s_num,bool is_shadow_ray) {
 }
 
 /*
+Check point (x,y) is in triangle (x0,y0),(x1,y1),(x2,y2) and give area of this triangle to return the barycentric coordinate
 since alpha+beta+gamma=1;
     x=alpha*x0+beta*x1+(1-alpha-beta)*x2
     y=alpha*y0+beta*y1+(1-alpha-beta)*y2
@@ -326,6 +332,7 @@ bool point_in_triangle(double x, double y, double x0, double y0, double x1, doub
     return true;
 }
 
+// Intersection of traingle and ray
 bool ray_triangle_intersect(Ray& r, double& t, Triangle &tri, glm::dvec3 &barycentric) {
     timesOfTriangleIntersect++;
     double t0;
@@ -353,6 +360,7 @@ bool ray_triangle_intersect(Ray& r, double& t, Triangle &tri, glm::dvec3 &baryce
     return true;
 }
 
+// VBVH tree search for triangle intersection
 void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& barycentric, bool is_shadow_ray) {
     if (BVHTriangle.isChild[cur]) {
         for (int i = 0; i < BVHTriangle.childs[cur].size(); i++) {
@@ -390,6 +398,7 @@ void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& baryc
     }
 }
 
+// Calculate triangle intersection return is barycentric coordinate, t value and t_num is the triangle index
 void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3 &barycentric,bool is_shadow_ray) {
 
     if (useBVH) {
@@ -399,7 +408,7 @@ void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3 &barycentric,bool i
         for (int i = 0; i < num_triangles; i++) {
             if (ray_triangle_intersect(r, t, triangles[i], barycentric)) {
                 t_num = i;
-                if (is_shadow_ray) {
+                if (is_shadow_ray) { // For shadow ray, we just consider if there is an intersection or not
                     return;
                 }
             }
@@ -407,6 +416,7 @@ void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3 &barycentric,bool i
     }
 }
 
+// Check whether ray r is intersect with whole scene
 bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_point) {
     double t0 = max_t, t1 = max_t;
     int s_num = -1, t_num = -1;
@@ -501,6 +511,7 @@ glm::dvec3 get_color(Ray &r,int layer) {
     }
 }
 
+// Calculate BRDF
 struct BRDF {
     Vertex p;
     glm::dvec3 w_i;
@@ -541,26 +552,17 @@ struct BRDF {
         glm::dvec3 F = F0 + (1.0 - F0) * myPow(1.0 - glm::dot(w_o, h), 5);
         double G = G1(w_i, h) * G1(w_o, h);
         double Dh = D(h);
-        // printf("alpha %f\n", alpha);
-        // print(F, "F");
-        // printf("G %f\n", G);
-        // printf("Dh %f\ndot %f\n", Dh, xplus(glm::dot(h, p.normal)));
         glm::dvec3 fs = F * G * Dh / (4 * abs(glm::dot(w_i, p.normal)) * abs(glm::dot(w_o, p.normal)));
         double tmpDot = glm::dot(h, w_i);
         double FD90 = 2 * tmpDot * tmpDot * p.roughness + 0.5;
         double fd = 1.0 / PI * (1.0 + (FD90 - 1.0) * myPow(1.0 - glm::dot(w_i, p.normal), 5)) *
             (1.0 + (FD90 - 1.0) * myPow(1.0 - glm::dot(w_o, p.normal), 5)) *
             (1.0 - p.metallic);
-
-        // print(fs, "fs");
-        // printf("fd %f\n", fd);
-        // print(p.color_diffuse, "dif");
-        // print(fs + fd, "fs+fd");
-
         return (fs + fd) * p.color_diffuse;
     }
 };
 
+// calculation of monte carlo
 glm::dvec3 get_color_monte_carlo(Ray &r) {
     glm::dvec3 retCol(0.0, 0.0, 0.0);
 
@@ -579,15 +581,6 @@ glm::dvec3 get_color_monte_carlo(Ray &r) {
     glm::dvec3 n_light = lights[sampledLightID].normal;
 
     glm::dvec3 w_i=glm::normalize(p_light - intersect_point.position);
-
-    // print(n_light, "n_i");
-    // print(w_i, "w_i");
-    // print(p_light, "p_light");
-    // print(w_o, "w_o");
-    // print(intersect_point.position, "p");
-    // print(intersect_point.normal, "p.n");
-    // print(intersect_point.color_diffuse, "diffuse");
-    // printf("metallic %f\n", intersect_point.metallic);
 
     double dot_wi_n = glm::dot(w_i, intersect_point.normal);
 
@@ -614,17 +607,12 @@ glm::dvec3 get_color_monte_carlo(Ray &r) {
 
     retCol = lights[sampledLightID].color * brdf.calc() * dot_wi_n / pdf;
 
-    // print(lights[sampledLightID].color, "light color");
-    // printf("dot %f\n", dot_wi_n);
-    // printf("pdf %f\n", pdf);
-    // print(retCol, "retCol");
-    // printf("\n");
-
     return retCol;
 }
 
+// Thread function for calculate normal ray tracing
 void calculateYNormal(int id,double xMin,double dx,double px,double yMin,double dy,double py){
-    int div=WIDTH/8;if(WIDTH%8) div++;
+    int div=WIDTH/numThreads;if(WIDTH% numThreads) div++;
     for(int x=id*div;x<min((id+1)*div,WIDTH);x++){
         for (int y = 0; y < HEIGHT; y++){
             glm::dvec3 col(0.0,0.0,0.0);
@@ -643,10 +631,19 @@ void calculateYNormal(int id,double xMin,double dx,double px,double yMin,double 
     }
 }
 
-/*
+// Thread function for monte carlo ray tracing
+void calculateYMonteCarlo(int id,double xMin,double dx,double x0,double yMin,double dy,double y0) {
+    int div = WIDTH / numThreads; if (WIDTH % numThreads) div++;
+    for (int x = id * div; x < min((id + 1) * div, WIDTH); x++) {
+        for (unsigned int y = 0; y < HEIGHT; y++) {
+            Ray r;
+            r.origin = camera_pos;
+            r.direction = glm::normalize(glm::dvec3(xMin + dx * (x0 + x), yMin + dy * (y0 + y), -1.0));
+            myBuffer[y][x] += get_color_monte_carlo(r);
+        }
+    }
+}
 
-*/
-//MODIFY THIS FUNCTION
 void draw_scene()
 {
     double xMin = -aspect_ratio * tan(fov / 2.0), yMin = -tan(fov / 2.0);
@@ -660,9 +657,13 @@ void draw_scene()
                 myBuffer[y][x] = glm::dvec3(0.0, 0.0, 0.0);
             }
         }
+        // Below are the variable using for halton sequence
         int b1 = 2, b2 = 3, n1 = 0, d1 = 1, n2 = 0, d2 = 1, x1, y1, x2, y2;
         double x0, y0;
+        xMin += dx / 2.0, yMin += dy / 2.0;
+
         for (unsigned int sampleTime = 0; sampleTime < numMonteCarlo; sampleTime++) {
+            // Generate the halton sequence
             x1 = d1 - n1;
             if (x1 == 1) {
                 n1 = 1;
@@ -690,17 +691,19 @@ void draw_scene()
             }
             y0 = (1.0 * n2) / (1.0 * d2) - 0.5;
             printf("Sample time:%d x0 y0 %f %f\n",sampleTime, x0, y0);
+            vector<thread> threads;
 
-#pragma omp parallel for schedule(dynamic, 1)
-            for (int x = 0; x < WIDTH; x++)
-            {
-                for (unsigned int y = 0; y < HEIGHT; y++)
-                {
-                    Ray r;
-                    r.origin = camera_pos;
-                    r.direction = glm::normalize(glm::dvec3(xMin + dx * (x0 + x), yMin + dy * (y0 + y), -1.0));
-                    //printf("x y %d %d\n", x, y);
-                    myBuffer[y][x] += get_color_monte_carlo(r);
+            if (numThreads == 1) {
+                for (int x = 0; x < numThreads; x++) {
+                    calculateYMonteCarlo(x, xMin, dx, x0, yMin, dy, y0);
+                }
+            }
+            else {
+                for (int x = 0; x < numThreads; x++) {
+                    threads.emplace_back(calculateYMonteCarlo, x, xMin, dx, x0, yMin, dy, y0);
+                }
+                for (auto& thread : threads) {
+                    thread.join();
                 }
             }
             glPointSize(2.0);
@@ -717,19 +720,23 @@ void draw_scene()
         }
     }
     else {
-        xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(1.0*numAntialiasing);
+        xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(2.0*numAntialiasing);
         double px=dx/(1.0*numAntialiasing),py=dy/(1.0*numAntialiasing);
         vector<thread> threads;
 
-        for(int x=0;x<8;x++){
-            calculateYNormal(x,xMin,dx,px,yMin,dy,py);
+        if (numThreads == 1) {
+            for (int x = 0; x < numThreads; x++) {
+                calculateYNormal(x, xMin, dx, px, yMin, dy, py);
+            }
         }
-        //  for (int x = 0; x < 8; x++){
-        //     threads.emplace_back(calculateYNormal,x,xMin,dx,px,yMin,dy,py);
-        // }
-        // for(auto &thread:threads){
-        //     thread.join();
-        // }
+        else {
+            for (int x = 0; x < numThreads; x++){
+                threads.emplace_back(calculateYNormal,x,xMin,dx,px,yMin,dy,py);
+            }
+            for(auto &thread:threads){
+                thread.join();
+            }
+        }
         glPointSize(2.0);
         glBegin(GL_POINTS);
         for (int x = 0; x < WIDTH; x++) {
@@ -1055,7 +1062,7 @@ void initAreaLight(){
                 continue;
             }
             light.position+=lights[i].position;
-            light.color=lights[i].color/(1.0*numSoftShadow);
+            light.color=lights[i].color/(1.0* numSoftShadow);
             newLights.push_back(light);
             j++;
         }
@@ -1246,14 +1253,21 @@ int main(int argc, char ** argv)
         mode = MODE_DISPLAY;
     }
 
-    fov = 60.0 / 180.0 * PI;
-    numMonteCarlo = 100;
-    useMonteCarlo = false;
-    numAntialiasing = 3;
-    numSoftShadow=20;
-    radiusSoftShadow=0.2;
-    useBVH =true;
-    numRecursive = 2;
+    useBVH = true; // true if we want to use BVH, much faster when scene are complicated
+
+    numThreads = 1; // Number of threads
+    
+    fov = 60.0 / 180.0 * PI; // FOV
+
+    numMonteCarlo = 200; // Number of sample
+    useMonteCarlo = false; // true if we want monte carlo ray tracing
+    
+    // If useMonteCarlo is false then below variable will be affected
+    numAntialiasing = 1; // number of sample times for each pixel,numAntialiasing =3 means we divide a pixel in to 3*3 smaller pixels
+    numSoftShadow = 1; // Number of sublights for softshadow
+    radiusSoftShadow=0.5; // The sphere radius for generating sublights
+    attenuation = 0.8; // Attenuation for recursion
+    numRecursive = 0; // recursion times
 
     glutInit(&argc,argv);
     if (useMonteCarlo) {
