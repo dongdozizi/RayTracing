@@ -41,8 +41,6 @@ Feature:                                 Status: finish? (yes/no)
 
 The still images are shown in images folder, and other more detailed results are in otherImages folder, the scene folder store the scenes, scene end with 'M' means this scene is for monte carlo sampling.
 
-Images in the images folder:
-
 siggraph.jpg - The result of siggraph.scene
 siggraphMonteCarlo.jpg - The result of siggraphM.scene
 siggraphAntiSoftRecur.jpg - The result of siggraph.scene using antialiasing, soft shadow and recursive reflection.

@@ -6,15 +6,15 @@
 */
 
 #ifdef WIN32
-    #include <windows.h>
+#include <windows.h>
 #endif
 
 #if defined(WIN32) || defined(linux)
-    #include <GL/gl.h>
-    #include <GL/glut.h>
+#include <GL/gl.h>
+#include <GL/glut.h>
 #elif defined(__APPLE__)
-    #include <OpenGL/gl.h>
-    #include <GLUT/glut.h>
+#include <OpenGL/gl.h>
+#include <GLUT/glut.h>
 #endif
 
 #include <stdio.h>
@@ -32,7 +32,7 @@
 #include <random>
 
 #ifdef WIN32
-    #define strcasecmp _stricmp
+#define strcasecmp _stricmp
 #endif
 
 // Include GLM
@@ -47,7 +47,6 @@
 // Eigen
 #include <Eigen/Dense>
 #include <Eigen/SVD>
-#include <stack>
 
 using namespace std;
 
@@ -55,7 +54,7 @@ using namespace std;
 #define MAX_SPHERES 1000
 #define MAX_LIGHTS 100
 
-char * filename = NULL;
+char* filename = NULL;
 
 //different display modes
 #define MODE_DISPLAY 1
@@ -83,16 +82,16 @@ int numRecursive = 3; // Number of recursion, if it is 0 then there is no recurs
 double attenuation = 0.8;
 int numAntialiasing = 3;
 int numSoftShadow = 20;
-double radiusSoftShadow=0.3;
+double radiusSoftShadow = 0.3;
 bool useBVH = false;
 int numThreads = 8;
+
+unsigned char buffer[HEIGHT][WIDTH][3];
 
 double totTriangleTime = 0.0;
 double totSphereTime = 0.0;
 
-unsigned char buffer[HEIGHT][WIDTH][3];
-
-struct Ray{
+struct Ray {
     glm::dvec3 origin;
     glm::dvec3 direction;
 };
@@ -100,8 +99,8 @@ struct Ray{
 struct Vertex
 {
     glm::dvec3 position = glm::dvec3(0.0, 0.0, 0.0);
-    glm::dvec3 color_diffuse=glm::dvec3(0.0, 0.0, 0.0);
-    glm::dvec3 color_specular= glm::dvec3(0.0, 0.0, 0.0);
+    glm::dvec3 color_diffuse = glm::dvec3(0.0, 0.0, 0.0);
+    glm::dvec3 color_specular = glm::dvec3(0.0, 0.0, 0.0);
     glm::dvec3 normal = glm::dvec3(0.0, 0.0, 0.0);
     double shininess = 0.0;
     // For MonteCarlo
@@ -120,7 +119,7 @@ struct Triangle
     double area;
 };
 
-struct Sphere{
+struct Sphere {
     glm::dvec3 position;
     glm::dvec3 color_diffuse;
     glm::dvec3 color_specular;
@@ -175,16 +174,16 @@ int num_triangles = 0;
 int num_spheres = 0;
 int num_lights = 0;
 
-void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned char b);
-void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b);
-void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
+void plot_pixel_display(int x, int y, unsigned char r, unsigned char g, unsigned char b);
+void plot_pixel_jpeg(int x, int y, unsigned char r, unsigned char g, unsigned char b);
+void plot_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b);
 
 void print(glm::dvec3 pt, char s[]) {
     printf("%s %f %f %f\n", s, pt[0], pt[1], pt[2]);
 }
 
 // Intersection of sphere and ray
-bool ray_sphere_intersect(Ray& r, double& t,Sphere &s) {
+bool ray_sphere_intersect(Ray& r, double& t, Sphere& s) {
     timesOfSphereIntersect++;
     double dx, dy, dz, b, c, delta;
     dx = (r.origin.x - s.position.x);
@@ -214,7 +213,7 @@ bool ray_sphere_intersect(Ray& r, double& t,Sphere &s) {
 }
 
 // Intersection of sphere and an bounding box
-bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
+bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox& bb) {
     timesOfBBIntersect++;
     glm::dvec3 dirfrac;
     if (abs(r.direction.x) <= epsilon) dirfrac.x = 1e9;
@@ -235,12 +234,12 @@ bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
     float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6));
 
     // if tmax < 0, ray (line) is intersecting AABB, but the whole AABB is behind us
-    if (tmax < epsilon){
+    if (tmax < epsilon) {
         return false;
     }
 
     // if tmin > tmax, ray doesn't intersect AABB
-    if (tmin > tmax){
+    if (tmin > tmax) {
         return false;
     }
 
@@ -251,49 +250,46 @@ bool ray_bb_intersect(Ray& r, double& t, BVHBoundBox &bb) {
     return true;
 }
 
-// Calculate sphere intersection
-void calc_sphere(Ray &r, double& t, int &s_num,bool is_shadow_ray) {
-    if (useBVH || num_spheres > 3) {
-        stack<pair<int,double> > st;
-        st.push(make_pair(0, 0));
-        //printf("start bvh\n");
-        while (!st.empty()) {
-            int cur = st.top().first; //printf("%d\n", cur);
-            double curt = st.top().second;
-            st.pop();
-            if (curt >= t) continue;
-            if (BVHSphere.isChild[cur]) {
-                for (int i = 0; i < BVHSphere.childs[cur].size(); i++) {
-                    if (ray_sphere_intersect(r, t, spheres[BVHSphere.childs[cur][i]]) == true) {
-                        s_num = BVHSphere.childs[cur][i];
-                        if (is_shadow_ray) return;
-                    }
-                }
-            }
-            else {
-                double t0 = t, t1 = t;
-                int cl = BVHSphere.childs[cur][0], cr = BVHSphere.childs[cur][1];
-                bool il = ray_bb_intersect(r, t0, BVHSphere.boxList[cl]);
-                bool ir = ray_bb_intersect(r, t1, BVHSphere.boxList[cr]);
-                //printf("%d %d\n", il, ir);
-                if (il && ir) {
-                    if (t0 < t1) {
-                        st.push(make_pair(cr, t1));
-                        st.push(make_pair(cl, t0));
-                    }
-                    else {
-                        st.push(make_pair(cl, t0));
-                        st.push(make_pair(cr, t1));
-                    }
-                }
-                else if (il) {
-                    st.push(make_pair(cl, t0));
-                }
-                else if (ir) {
-                    st.push(make_pair(cr, t1));
-                }
+// The BVH search for sphere intersection
+void calc_sphere_BVH(int cur, Ray& r, double& t, int& s_num, bool is_shadow_ray) {
+    if (BVHSphere.isChild[cur]) {
+        for (int i = 0; i < BVHSphere.childs[cur].size(); i++) {
+            if (ray_sphere_intersect(r, t, spheres[BVHSphere.childs[cur][i]]) == true) {
+                s_num = BVHSphere.childs[cur][i];
+                if (is_shadow_ray) return;
             }
         }
+    }
+    else {
+        double t0 = t, t1 = t;
+        int cl = BVHSphere.childs[cur][0], cr = BVHSphere.childs[cur][1];
+        bool il = ray_bb_intersect(r, t0, BVHSphere.boxList[cl]);
+        bool ir = ray_bb_intersect(r, t1, BVHSphere.boxList[cr]);
+        if (il && ir) {
+            if (t0 < t1) {
+                calc_sphere_BVH(cl, r, t, s_num, is_shadow_ray);
+                if (s_num != -1 && is_shadow_ray == true) return;
+                if (t1 < t) calc_sphere_BVH(cr, r, t, s_num, is_shadow_ray);
+            }
+            else {
+                calc_sphere_BVH(cr, r, t, s_num, is_shadow_ray);
+                if (s_num != -1 && is_shadow_ray == true) return;
+                if (t0 < t) calc_sphere_BVH(cl, r, t, s_num, is_shadow_ray);
+            }
+        }
+        else if (il) {
+            calc_sphere_BVH(cl, r, t, s_num, is_shadow_ray);
+        }
+        else if (ir) {
+            calc_sphere_BVH(cr, r, t, s_num, is_shadow_ray);
+        }
+    }
+}
+
+// Calculate sphere intersection
+void calc_sphere(Ray& r, double& t, int& s_num, bool is_shadow_ray) {
+    if (useBVH) {
+        calc_sphere_BVH(0, r, t, s_num, is_shadow_ray);
     }
     else {
         for (int i = 0; i < num_spheres; i++) {
@@ -343,7 +339,7 @@ bool point_in_triangle(double x, double y, double x0, double y0, double x1, doub
 }
 
 // Intersection of traingle and ray
-bool ray_triangle_intersect(Ray& r, double& t, Triangle &tri, glm::dvec3 &barycentric) {
+bool ray_triangle_intersect(Ray& r, double& t, Triangle& tri, glm::dvec3& barycentric) {
     timesOfTriangleIntersect++;
     double t0;
     glm::dvec3 tmpBarycentric;
@@ -370,58 +366,51 @@ bool ray_triangle_intersect(Ray& r, double& t, Triangle &tri, glm::dvec3 &baryce
     return true;
 }
 
-/*
-Total triangle intersection 7331583
-Total sphere intersection 0
-Total AABB intersection 36625324
-*/
-
-// Calculate triangle intersection return is barycentric coordinate, t value and t_num is the triangle index
-void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3 &barycentric,bool is_shadow_ray) {
-    if (useBVH) {
-        stack<pair<int, double> > st;
-        st.push(make_pair(0, 0));
-        //printf("start bvh\n");
-        while (!st.empty()) {
-            int cur = st.top().first;
-            double curt = st.top().second;
-            st.pop();
-            if (curt >= t) continue;
-            if (BVHTriangle.isChild[cur]) {
-                for (int i = 0; i < BVHTriangle.childs[cur].size(); i++) {
-                    if (ray_triangle_intersect(r, t, triangles[BVHTriangle.childs[cur][i]], barycentric)) {
-                        t_num = BVHTriangle.childs[cur][i];
-                        if (is_shadow_ray) {
-                            return;
-                        }
-                    }
-                }
-            }
-            else {
-                double t0 = t, t1 = t;
-                int cl = BVHTriangle.childs[cur][0], cr = BVHTriangle.childs[cur][1];
-                bool il = ray_bb_intersect(r, t0, BVHTriangle.boxList[cl]);
-                bool ir = ray_bb_intersect(r, t1, BVHTriangle.boxList[cr]);
-                if (il && ir) {
-                    if (t0 < t1) {
-                        st.push(make_pair(cr, t1));
-                        st.push(make_pair(cl, t0));
-                    }
-                    else {
-                        st.push(make_pair(cl, t0));
-                        st.push(make_pair(cr, t1));
-                    }
-                }
-                else if (il) {
-                    st.push(make_pair(cl, t0));
-                }
-                else if (ir) {
-                    st.push(make_pair(cr, t1));
+// VBVH tree search for triangle intersection
+void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& barycentric, bool is_shadow_ray) {
+    if (BVHTriangle.isChild[cur]) {
+        for (int i = 0; i < BVHTriangle.childs[cur].size(); i++) {
+            if (ray_triangle_intersect(r, t, triangles[BVHTriangle.childs[cur][i]], barycentric)) {
+                t_num = BVHTriangle.childs[cur][i];
+                if (is_shadow_ray) {
+                    return;
                 }
             }
         }
     }
-    else{
+    else {
+        double t0 = t, t1 = t;
+        int cl = BVHTriangle.childs[cur][0], cr = BVHTriangle.childs[cur][1];
+        bool il = ray_bb_intersect(r, t0, BVHTriangle.boxList[cl]);
+        bool ir = ray_bb_intersect(r, t1, BVHTriangle.boxList[cr]);
+        if (il && ir) {
+            if (t0 < t1) {
+                calc_triangle_BVH(cl, r, t, t_num, barycentric, is_shadow_ray);
+                if (t_num != -1 && is_shadow_ray == true) return;
+                if (t1 < t) calc_triangle_BVH(cr, r, t, t_num, barycentric, is_shadow_ray);
+            }
+            else {
+                calc_triangle_BVH(cr, r, t, t_num, barycentric, is_shadow_ray);
+                if (t_num != -1 && is_shadow_ray == true) return;
+                if (t0 < t) calc_triangle_BVH(cl, r, t, t_num, barycentric, is_shadow_ray);
+            }
+        }
+        else if (il) {
+            calc_triangle_BVH(cl, r, t, t_num, barycentric, is_shadow_ray);
+        }
+        else if (ir) {
+            calc_triangle_BVH(cr, r, t, t_num, barycentric, is_shadow_ray);
+        }
+    }
+}
+
+// Calculate triangle intersection return is barycentric coordinate, t value and t_num is the triangle index
+void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3& barycentric, bool is_shadow_ray) {
+
+    if (useBVH) {
+        calc_triangle_BVH(0, r, t, t_num, barycentric, is_shadow_ray);
+    }
+    else {
         for (int i = 0; i < num_triangles; i++) {
             if (ray_triangle_intersect(r, t, triangles[i], barycentric)) {
                 t_num = i;
@@ -434,7 +423,7 @@ void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3 &barycentric,bool i
 }
 
 // Check whether ray r is intersect with whole scene
-bool is_intersect(Ray &r, bool is_shadow_ray,double max_t,Vertex &intersect_point) {
+bool is_intersect(Ray& r, bool is_shadow_ray, double max_t, Vertex& intersect_point) {
     double t0 = max_t, t1 = max_t;
     int s_num = -1, t_num = -1;
     glm::dvec3 barycentric;
@@ -504,20 +493,20 @@ glm::dvec3 cast_shadow_ray(glm::dvec3 V, Vertex intersect_point) {
             continue;
         }
         glm::dvec3 R = 2.0 * glm::dot(light_ray.direction, intersect_point.normal) * intersect_point.normal - light_ray.direction;
-        col += lights[i].color * (intersect_point.color_diffuse * (max(0.0,glm::dot(light_ray.direction,intersect_point.normal))) + 
+        col += lights[i].color * (intersect_point.color_diffuse * (max(0.0, glm::dot(light_ray.direction, intersect_point.normal))) +
             intersect_point.color_specular * pow(max(0.0, glm::dot(R, V)), intersect_point.shininess));
     }
     return col;
 }
 
 //Get color of each node
-glm::dvec3 get_color(Ray &r,int layer) {
+glm::dvec3 get_color(Ray& r, int layer) {
     Vertex intersect_point;
     // Cast ray from camera
     if (!is_intersect(r, false, infinity, intersect_point)) {
         return colorBackground;
     }
-    glm::dvec3 col=cast_shadow_ray(-r.direction,intersect_point);
+    glm::dvec3 col = cast_shadow_ray(-r.direction, intersect_point);
     if (layer == 0) {
         return col;
     }
@@ -580,7 +569,7 @@ struct BRDF {
 };
 
 // calculation of monte carlo
-glm::dvec3 get_color_monte_carlo(Ray &r) {
+glm::dvec3 get_color_monte_carlo(Ray& r) {
     glm::dvec3 retCol(0.0, 0.0, 0.0);
 
     Vertex intersect_point;
@@ -591,13 +580,13 @@ glm::dvec3 get_color_monte_carlo(Ray &r) {
 
     glm::dvec3 w_o = glm::normalize(camera_pos - intersect_point.position);
 
-    double U1= distrib(eng),U2=distrib(eng), U3=distrib(eng);
+    double U1 = distrib(eng), U2 = distrib(eng), U3 = distrib(eng);
 
     int sampledLightID = (int)std::min((int)(num_lights * U1), num_lights - 1);
     glm::dvec3 p_light = (1.0 - U2) * (lights[sampledLightID].p[0] * (1.0 - U3) + lights[sampledLightID].p[1] * U3) + U2 * (lights[sampledLightID].p[2] * (1.0 - U3) + lights[sampledLightID].p[3] * U3); // sample point p_l
     glm::dvec3 n_light = lights[sampledLightID].normal;
 
-    glm::dvec3 w_i=glm::normalize(p_light - intersect_point.position);
+    glm::dvec3 w_i = glm::normalize(p_light - intersect_point.position);
 
     double dot_wi_n = glm::dot(w_i, intersect_point.normal);
 
@@ -628,28 +617,28 @@ glm::dvec3 get_color_monte_carlo(Ray &r) {
 }
 
 // Thread function for calculate normal ray tracing
-void calculateYNormal(int id,double xMin,double dx,double px,double yMin,double dy,double py){
-    int div=WIDTH/numThreads;if(WIDTH% numThreads) div++;
-    for(int x=id*div;x<min((id+1)*div,WIDTH);x++){
-        for (int y = 0; y < HEIGHT; y++){
-            glm::dvec3 col(0.0,0.0,0.0);
-            for(int i=0;i<numAntialiasing;i++){
-                for(int j=0;j<numAntialiasing;j++){
+void calculateYNormal(int id, double xMin, double dx, double px, double yMin, double dy, double py) {
+    int div = WIDTH / numThreads; if (WIDTH % numThreads) div++;
+    for (int x = id * div; x < min((id + 1) * div, WIDTH); x++) {
+        for (int y = 0; y < HEIGHT; y++) {
+            glm::dvec3 col(0.0, 0.0, 0.0);
+            for (int i = 0; i < numAntialiasing; i++) {
+                for (int j = 0; j < numAntialiasing; j++) {
                     Ray r;
                     r.origin = camera_pos;
                     r.direction = glm::normalize(glm::dvec3(xMin + dx * x + px * i, yMin + dy * y + py * j, -1.0));
                     col += get_color(r, numRecursive) + ambient_light;
                 }
             }
-            col/=(1.0*numAntialiasing*numAntialiasing);
-            col=glm::max(glm::min(col,1.0),0.0);
+            col /= (1.0 * numAntialiasing * numAntialiasing);
+            col = glm::max(glm::min(col, 1.0), 0.0);
             myBuffer[y][x] = col;
         }
     }
 }
 
 // Thread function for monte carlo ray tracing
-void calculateYMonteCarlo(int id,double xMin,double dx,double x0,double yMin,double dy,double y0) {
+void calculateYMonteCarlo(int id, double xMin, double dx, double x0, double yMin, double dy, double y0) {
     int div = WIDTH / numThreads; if (WIDTH % numThreads) div++;
     for (int x = id * div; x < min((id + 1) * div, WIDTH); x++) {
         for (unsigned int y = 0; y < HEIGHT; y++) {
@@ -664,13 +653,13 @@ void calculateYMonteCarlo(int id,double xMin,double dx,double x0,double yMin,dou
 void draw_scene()
 {
     double xMin = -aspect_ratio * tan(fov / 2.0), yMin = -tan(fov / 2.0);
-    double dx=2.0*tan(fov/2.0)* aspect_ratio /(1.0*WIDTH), dy = 2.0*tan(fov/2.0)/(1.0*HEIGHT);
+    double dx = 2.0 * tan(fov / 2.0) * aspect_ratio / (1.0 * WIDTH), dy = 2.0 * tan(fov / 2.0) / (1.0 * HEIGHT);
     double current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001;
 
     if (useMonteCarlo) {
         xMin += dx / 2.0, yMin += dy / 2.0;
-        for (unsigned int x = 0; x < WIDTH; x++){
-            for (unsigned int y = 0; y < HEIGHT; y++){
+        for (unsigned int x = 0; x < WIDTH; x++) {
+            for (unsigned int y = 0; y < HEIGHT; y++) {
                 myBuffer[y][x] = glm::dvec3(0.0, 0.0, 0.0);
             }
         }
@@ -707,7 +696,7 @@ void draw_scene()
                 n2 = (b2 + 1) * y2 - x2;
             }
             y0 = (1.0 * n2) / (1.0 * d2) - 0.5;
-            printf("Sample time:%d x0 y0 %f %f\n",sampleTime, x0, y0);
+            printf("Sample time:%d x0 y0 %f %f\n", sampleTime, x0, y0);
             vector<thread> threads;
 
             if (numThreads == 1) {
@@ -737,8 +726,8 @@ void draw_scene()
         }
     }
     else {
-        xMin+=dx/(2.0*numAntialiasing),yMin+=dy/(2.0*numAntialiasing);
-        double px=dx/(1.0*numAntialiasing),py=dy/(1.0*numAntialiasing);
+        xMin += dx / (2.0 * numAntialiasing), yMin += dy / (2.0 * numAntialiasing);
+        double px = dx / (1.0 * numAntialiasing), py = dy / (1.0 * numAntialiasing);
         vector<thread> threads;
 
         if (numThreads == 1) {
@@ -747,10 +736,10 @@ void draw_scene()
             }
         }
         else {
-            for (int x = 0; x < numThreads; x++){
-                threads.emplace_back(calculateYNormal,x,xMin,dx,px,yMin,dy,py);
+            for (int x = 0; x < numThreads; x++) {
+                threads.emplace_back(calculateYNormal, x, xMin, dx, px, yMin, dy, py);
             }
-            for(auto &thread:threads){
+            for (auto& thread : threads) {
                 thread.join();
             }
         }
@@ -771,8 +760,8 @@ void draw_scene()
     printf("Cost time: %f s\n", current_time);
     printf("Cost time S: %f s\n", totSphereTime);
     printf("Cost time T: %f s\n", totTriangleTime);
-    printf("Total triangle intersection %lld\n",timesOfTriangleIntersect);
-    printf("Total sphere intersection %lld\n",timesOfSphereIntersect);
+    printf("Total triangle intersection %lld\n", timesOfTriangleIntersect);
+    printf("Total sphere intersection %lld\n", timesOfSphereIntersect);
     if (useBVH) {
         printf("Total AABB intersection %lld\n", timesOfBBIntersect);
     }
@@ -782,7 +771,7 @@ void draw_scene()
 void plot_pixel_display(int x, int y, unsigned char r, unsigned char g, unsigned char b)
 {
     glColor3f(((float)r) / 255.0f, ((float)g) / 255.0f, ((float)b) / 255.0f);
-    glVertex2i(x,y);
+    glVertex2i(x, y);
 }
 
 void plot_pixel_jpeg(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -794,9 +783,9 @@ void plot_pixel_jpeg(int x, int y, unsigned char r, unsigned char g, unsigned ch
 
 void plot_pixel(int x, int y, unsigned char r, unsigned char g, unsigned char b)
 {
-    plot_pixel_display(x,y,r,g,b);
-    if(mode == MODE_JPEG)
-        plot_pixel_jpeg(x,y,r,g,b);
+    plot_pixel_display(x, y, r, g, b);
+    if (mode == MODE_JPEG)
+        plot_pixel_jpeg(x, y, r, g, b);
 }
 
 void save_jpg()
@@ -806,7 +795,7 @@ void save_jpg()
     ImageIO img(WIDTH, HEIGHT, 3, &buffer[0][0][0]);
     if (img.save(filename, ImageIO::FORMAT_JPEG) != ImageIO::OK)
         printf("Error in Saving\n");
-    else 
+    else
         printf("File saved Successfully\n");
 }
 
@@ -827,7 +816,7 @@ void parse_check(const char* expected, char* found)
     }
 }
 
-void parse_doubles(FILE* file, const char* check, glm::dvec3 &p)
+void parse_doubles(FILE* file, const char* check, glm::dvec3& p)
 {
     char str[512];
     int ret = fscanf(file, "%s", str);
@@ -855,36 +844,36 @@ void parse_double(FILE* file, const char* check, double& r)
     printf("%s %f\n", check, r);
 }
 
-int loadScene(char *argv)
+int loadScene(char* argv)
 {
-    FILE * file = fopen(argv,"r");
+    FILE* file = fopen(argv, "r");
     int number_of_objects;
     char type[50];
     Triangle t;
     Sphere s;
     Light l;
-    fscanf(file,"%i", &number_of_objects);
+    fscanf(file, "%i", &number_of_objects);
 
-    printf("number of objects: %i\n",number_of_objects);
+    printf("number of objects: %i\n", number_of_objects);
 
-    parse_doubles(file,"amb:",ambient_light);
+    parse_doubles(file, "amb:", ambient_light);
 
-    for(int i=0; i<number_of_objects; i++)
+    for (int i = 0; i < number_of_objects; i++)
     {
-        fscanf(file,"%s\n",type);
-        printf("%s\n",type);
-        if(strcasecmp(type,"triangle")==0)
+        fscanf(file, "%s\n", type);
+        printf("%s\n", type);
+        if (strcasecmp(type, "triangle") == 0)
         {
             printf("found triangle\n");
-            for(int j=0;j < 3;j++){
-                parse_doubles(file,"pos:",t.v[j].position);
-                parse_doubles(file,"nor:",t.v[j].normal);
-                parse_doubles(file,"dif:",t.v[j].color_diffuse);
-                parse_doubles(file,"spe:",t.v[j].color_specular);
-                parse_double(file,"shi:", t.v[j].shininess);
+            for (int j = 0; j < 3; j++) {
+                parse_doubles(file, "pos:", t.v[j].position);
+                parse_doubles(file, "nor:", t.v[j].normal);
+                parse_doubles(file, "dif:", t.v[j].color_diffuse);
+                parse_doubles(file, "spe:", t.v[j].color_specular);
+                parse_double(file, "shi:", t.v[j].shininess);
             }
 
-            if(num_triangles == MAX_TRIANGLES)
+            if (num_triangles == MAX_TRIANGLES)
             {
                 printf("too many triangles, you should increase MAX_TRIANGLES!\n");
                 exit(0);
@@ -892,17 +881,17 @@ int loadScene(char *argv)
             triangles.push_back(t); num_triangles++;
             //triangles[num_triangles++] = t;
         }
-        else if(strcasecmp(type,"sphere")==0)
+        else if (strcasecmp(type, "sphere") == 0)
         {
             printf("found sphere\n");
 
-            parse_doubles(file,"pos:",s.position);
-            parse_double(file,"rad:", s.radius);
-            parse_doubles(file,"dif:",s.color_diffuse);
-            parse_doubles(file,"spe:",s.color_specular);
-            parse_double(file,"shi:", s.shininess);
+            parse_doubles(file, "pos:", s.position);
+            parse_double(file, "rad:", s.radius);
+            parse_doubles(file, "dif:", s.color_diffuse);
+            parse_doubles(file, "spe:", s.color_specular);
+            parse_double(file, "shi:", s.shininess);
 
-            if(num_spheres == MAX_SPHERES)
+            if (num_spheres == MAX_SPHERES)
             {
                 printf("too many spheres, you should increase MAX_SPHERES!\n");
                 exit(0);
@@ -910,13 +899,13 @@ int loadScene(char *argv)
             spheres.push_back(s); num_spheres++;
             //spheres[num_spheres++] = s;
         }
-        else if(strcasecmp(type,"light")==0)
+        else if (strcasecmp(type, "light") == 0)
         {
             printf("found light\n");
-            parse_doubles(file,"pos:",l.position);
-            parse_doubles(file,"col:",l.color);
+            parse_doubles(file, "pos:", l.position);
+            parse_doubles(file, "col:", l.color);
 
-            if(num_lights == MAX_LIGHTS)
+            if (num_lights == MAX_LIGHTS)
             {
                 printf("too many lights, you should increase MAX_LIGHTS!\n");
                 exit(0);
@@ -926,7 +915,7 @@ int loadScene(char *argv)
         }
         else
         {
-            printf("unknown type in scene description:\n%s\n",type);
+            printf("unknown type in scene description:\n%s\n", type);
             exit(0);
         }
     }
@@ -1028,25 +1017,25 @@ void display()
 void init()
 {
     glMatrixMode(GL_PROJECTION);
-    glOrtho(0,WIDTH,0,HEIGHT,1,-1);
+    glOrtho(0, WIDTH, 0, HEIGHT, 1, -1);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    glClearColor(0,0,0,0);
+    glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 void idle()
 {
     //hack to make it only draw once
-    static int once=0;
-    if(!once)
+    static int once = 0;
+    if (!once)
     {
         draw_scene();
-        if(mode == MODE_JPEG)
+        if (mode == MODE_JPEG)
             save_jpg();
     }
-    once=1;
+    once = 1;
 }
 
 // Initialize triangle
@@ -1070,30 +1059,30 @@ void initTriangle() {
     }
 }
 
-void initAreaLight(){
+void initAreaLight() {
     vector<Light> newLights;
-    for(int i=0;i<num_lights;i++){
-        for(int j=0;j<numSoftShadow;){
+    for (int i = 0; i < num_lights; i++) {
+        for (int j = 0; j < numSoftShadow;) {
             Light light;
-            light.position=glm::dvec3(distrib(eng),distrib(eng),distrib(eng));
-            light.position*=radiusSoftShadow;
-            if(glm::length(light.position)>radiusSoftShadow){
+            light.position = glm::dvec3(distrib(eng), distrib(eng), distrib(eng));
+            light.position *= radiusSoftShadow;
+            if (glm::length(light.position) > radiusSoftShadow) {
                 continue;
             }
-            light.position+=lights[i].position;
-            light.color=lights[i].color/(1.0* numSoftShadow);
+            light.position += lights[i].position;
+            light.color = lights[i].color / (1.0 * numSoftShadow);
             newLights.push_back(light);
             j++;
         }
     }
-    lights=newLights;
-    num_lights=newLights.size();
+    lights = newLights;
+    num_lights = newLights.size();
 }
 
-int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,vector<glm::dvec3> &center) {
+int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList, vector<glm::dvec3>& center) {
     BVHBoundBox bb;
-    bb.p[0]=glm::dvec3(infinity);
-    bb.p[1]=glm::dvec3(-infinity);
+    bb.p[0] = glm::dvec3(infinity);
+    bb.p[1] = glm::dvec3(-infinity);
 
     for (int i = 0; i < vx.size(); i++) {
         for (int j = 0; j < 3; j++) {
@@ -1105,7 +1094,7 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         tree.boxList.push_back(bb);
         tree.isChild.push_back(true);
         tree.childs.push_back(vector<int>());
-        for(int i=0;i<vx.size();i++){
+        for (int i = 0; i < vx.size(); i++) {
             tree.childs[tree.size].push_back(vx[i]);
         }
         tree.size++;
@@ -1117,7 +1106,7 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         tree.isChild.push_back(false);
         tree.childs.push_back(vector<int>());
         int cur = tree.size - 1;
-        glm::dvec3 dif=bb.p[1]-bb.p[0];
+        glm::dvec3 dif = bb.p[1] - bb.p[0];
         // Find the axis with maximum difference
         int axis = 0;
         if (dif[0] > dif[1]) {
@@ -1130,17 +1119,17 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         }
 
         // Sort them with axis
-        vector<pair<double,int> > vxp(vx.size());
-        for(int i=0;i<vx.size();i++){
-            vxp[i].first=center[vx[i]][axis];
-            vxp[i].second=vx[i];
+        vector<pair<double, int> > vxp(vx.size());
+        for (int i = 0; i < vx.size(); i++) {
+            vxp[i].first = center[vx[i]][axis];
+            vxp[i].second = vx[i];
         }
-        sort(vxp.begin(),vxp.end());
-        for(int i=0;i<vxp.size();i++){
-            vx[i]=vxp[i].second;
+        sort(vxp.begin(), vxp.end());
+        for (int i = 0; i < vxp.size(); i++) {
+            vx[i] = vxp[i].second;
         }
 
-        int pc=vxp.size()/2;
+        int pc = vxp.size() / 2;
         // double mid=(vxp[vxp.size()-1].first+vxp[0].first)*0.5;
         // for(int i=0;i<vxp.size();i++){
         //     if(vxp[i].first>=mid){
@@ -1158,9 +1147,9 @@ int buildBVH(BVHTree &tree,vector<int> vx,vector<vector<glm::dvec3> > &bbList,ve
         }
 
         vx.clear();
-        int left=buildBVH(tree, vl, bbList, center);
+        int left = buildBVH(tree, vl, bbList, center);
         tree.childs[cur].push_back(left);
-        int right=buildBVH(tree, vr, bbList, center);
+        int right = buildBVH(tree, vr, bbList, center);
         tree.childs[cur].push_back(right);
         return cur;
     }
@@ -1175,8 +1164,8 @@ void initBVHTriangle() {
         vector<glm::dvec3> bb(2, triangles[i].v[0].position);
         glm::dvec3 p(0.0, 0.0, 0.0);
         for (int j = 0; j < 3; j++) {
-            bb[0]=glm::min(bb[0],triangles[i].v[j].position);
-            bb[1]=glm::max(bb[1],triangles[i].v[j].position);
+            bb[0] = glm::min(bb[0], triangles[i].v[j].position);
+            bb[1] = glm::max(bb[1], triangles[i].v[j].position);
             p += triangles[i].v[j].position / 3.0;
         }
         bbList.push_back(bb);
@@ -1215,29 +1204,29 @@ void initTotalLightArea() {
     printf("Total light area is %f\n", totalLightArea);
 }
 
-void generateScene(){
-    glm::dvec4 get(0.000000,-0.987823,-0.155582,2.904199);
-    glm::dvec3 yax(get.x,get.y,get.z);yax=-yax;
+void generateScene() {
+    glm::dvec4 get(0.000000, -0.987823, -0.155582, 2.904199);
+    glm::dvec3 yax(get.x, get.y, get.z); yax = -yax;
     glm::dvec3 xax(1.0, 0.0, 0.0);
     glm::dvec3 zax = glm::normalize(glm::cross(xax, yax));
     vector<glm::dvec3> ve;
-    glm::dvec3 base(-1.8, (-get.x * (-1.8) - get.z * (-7.0) + get.w) / get.y,-7.0);
+    glm::dvec3 base(-1.8, (-get.x * (-1.8) - get.z * (-7.0) + get.w) / get.y, -7.0);
     double r = 0.2;
     base += yax * r;
-    print(base,"base");
+    print(base, "base");
     double tph = r * 2.0 * sqrt(6.0) / 3.0;
     for (int i = 0; i < 10; i++) {
-       glm::dvec3 base2 = base + yax * tph * (1.0 * i) + xax * r * (1.0 * i) + zax * r * (1.0 * i);
-       print(base2," --- base2");
-       for (int j = 0; j < (10 - i); j++) {
-           glm::dvec3 base3 = base2 + r * sqrt(3.0) * zax * (1.0 * j) + r * xax*(1.0*j);
-           print(base3,"--- --- base3");
-           for (int k = 0; k < (10 - i-j); k++) {
-               glm::dvec3 base4 = base3 + 2.0 * r * xax*(1.0*k);
-               print(base4,"--- --- --- base4");
-               ve.push_back(base4);
-           }
-       }
+        glm::dvec3 base2 = base + yax * tph * (1.0 * i) + xax * r * (1.0 * i) + zax * r * (1.0 * i);
+        print(base2, " --- base2");
+        for (int j = 0; j < (10 - i); j++) {
+            glm::dvec3 base3 = base2 + r * sqrt(3.0) * zax * (1.0 * j) + r * xax * (1.0 * j);
+            print(base3, "--- --- base3");
+            for (int k = 0; k < (10 - i - j); k++) {
+                glm::dvec3 base4 = base3 + 2.0 * r * xax * (1.0 * k);
+                print(base4, "--- --- --- base4");
+                ve.push_back(base4);
+            }
+        }
     }
     /*
     n*(n+1)/2
@@ -1247,14 +1236,14 @@ void generateScene(){
     for (int i = 0; i < 1000; i++) printf("-");
     printf("\n%d\n", ve.size());
     for (int i = 0; i < ve.size(); i++) {
-       printf("sphere\n");
-       printf("pos: %f %f %f\n", ve[i][0], ve[i][1], ve[i][2]);
-       printf("rad: %f\n",r);
-       printf("dif: %f %f %f\n", distrib(eng), distrib(eng), distrib(eng));
-       printf("rou: %f\n", distrib(eng));
-       printf("met: %f\n", distrib(eng));
+        printf("sphere\n");
+        printf("pos: %f %f %f\n", ve[i][0], ve[i][1], ve[i][2]);
+        printf("rad: %f\n", r);
+        printf("dif: %f %f %f\n", distrib(eng), distrib(eng), distrib(eng));
+        printf("rou: %f\n", distrib(eng));
+        printf("met: %f\n", distrib(eng));
     }
-       exit(0);
+    exit(0);
 }
 
 void test() {
@@ -1281,7 +1270,7 @@ void test() {
 
     cout << "VP1: " << vp[1] << "\n\n VP2: " << vp[2] << "\n";
 
-    cout << svd.matrixU().transpose()*svd.matrixU()*vp[1] << "\n\n" << svd.matrixU().transpose() * svd.matrixU()*vp[2] << "\n";
+    cout << svd.matrixU().transpose() * svd.matrixU() * vp[1] << "\n\n" << svd.matrixU().transpose() * svd.matrixU() * vp[2] << "\n";
     //glm::dmat3 x;
     //for (int i = 0; i < 3; i++) {
     //    for (int j = 0; j < 3; j++) {
@@ -1292,15 +1281,15 @@ void test() {
     exit(0);
 }
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
     //test();
     //generateScene();
-    if ((argc < 2) || (argc > 3)){    
-        printf ("Usage: %s <input scenefile> [output jpegname]\n", argv[0]);
+    if ((argc < 2) || (argc > 3)) {
+        printf("Usage: %s <input scenefile> [output jpegname]\n", argv[0]);
         exit(0);
     }
-    if(argc == 3){
+    if (argc == 3) {
         mode = MODE_JPEG;
         filename = argv[2];
     }
@@ -1311,29 +1300,29 @@ int main(int argc, char ** argv)
     useBVH = true; // true if we want to use BVH, much faster when scene are complicated
 
     numThreads = 1; // Number of threads
-    
+
     fov = 60.0 / 180.0 * PI; // FOV
 
     numMonteCarlo = 200; // Number of sample
     useMonteCarlo = false; // true if we want monte carlo ray tracing
-    
+
     // If useMonteCarlo is false then below variable will be affected
     numAntialiasing = 1; // number of sample times for each pixel,numAntialiasing =3 means we divide a pixel in to 3*3 smaller pixels
     numSoftShadow = 1; // Number of sublights for softshadow
-    radiusSoftShadow=0.5; // The sphere radius for generating sublights
+    radiusSoftShadow = 0.5; // The sphere radius for generating sublights
     attenuation = 0.8; // Attenuation for recursion
     numRecursive = 0; // recursion times
 
-    glutInit(&argc,argv);
+    glutInit(&argc, argv);
     if (useMonteCarlo) {
         colorBackground = glm::dvec3(0.0, 0.0, 0.0);
         loadSceneMonteCarlo(argv[1]);
         initTotalLightArea();
     }
-    else{
+    else {
         colorBackground = glm::dvec3(1.0, 1.0, 1.0);
         loadScene(argv[1]);
-        if(numSoftShadow>1){
+        if (numSoftShadow > 1) {
             initAreaLight();
         }
     }
@@ -1349,13 +1338,13 @@ int main(int argc, char ** argv)
     }
 
     glutInitDisplayMode(GLUT_RGBA | GLUT_SINGLE);
-    glutInitWindowPosition(0,0);
-    glutInitWindowSize(WIDTH,HEIGHT);
+    glutInitWindowPosition(0, 0);
+    glutInitWindowSize(WIDTH, HEIGHT);
     int window = glutCreateWindow("Ray Tracer");
-    #ifdef __APPLE__
-        // This is needed on recent Mac OS X versions to correctly display the window.
-        glutReshapeWindow(WIDTH - 1, HEIGHT - 1);
-    #endif
+#ifdef __APPLE__
+    // This is needed on recent Mac OS X versions to correctly display the window.
+    glutReshapeWindow(WIDTH - 1, HEIGHT - 1);
+#endif
     glutDisplayFunc(display);
     glutIdleFunc(idle);
     init();
