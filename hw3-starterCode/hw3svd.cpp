@@ -88,9 +88,6 @@ int numThreads = 8;
 
 unsigned char buffer[HEIGHT][WIDTH][3];
 
-double totTriangleTime = 0.0;
-double totSphereTime = 0.0;
-
 struct Ray {
     glm::dvec3 origin;
     glm::dvec3 direction;
@@ -143,7 +140,10 @@ long long timesOfTriangleIntersect = 0, timesOfSphereIntersect = 0, timesOfBBInt
 
 struct BVHBoundBox {
     glm::dvec3 p[2];
+    glm::dmat3 rot;
+    glm::dmat3 invrot;
 };
+
 
 struct BVHTree {
     int size = 0;
@@ -263,8 +263,19 @@ void calc_sphere_BVH(int cur, Ray& r, double& t, int& s_num, bool is_shadow_ray)
     else {
         double t0 = t, t1 = t;
         int cl = BVHSphere.childs[cur][0], cr = BVHSphere.childs[cur][1];
-        bool il = ray_bb_intersect(r, t0, BVHSphere.boxList[cl]);
-        bool ir = ray_bb_intersect(r, t1, BVHSphere.boxList[cr]);
+        Ray rl, rr;
+        rl.origin = r.origin * BVHSphere.boxList[cl].invrot;
+        rl.direction = r.direction * BVHSphere.boxList[cl].invrot;
+        rr.origin = r.origin * BVHSphere.boxList[cr].invrot;
+        rr.direction = r.direction * BVHSphere.boxList[cr].invrot;
+        //printf("cl %d\n", cl);
+        //print(rl.origin,"rl.origin");
+        //print(rl.direction, "rl.direction");
+        //print(BVHSphere.boxList[cl].p[0], "cl0");
+        //print(BVHSphere.boxList[cl].p[1], "cl1");
+        bool il = ray_bb_intersect(rl, t0, BVHSphere.boxList[cl]);
+        bool ir = ray_bb_intersect(rr, t1, BVHSphere.boxList[cr]);
+        //printf("%d %d\n", il, ir);
         if (il && ir) {
             if (t0 < t1) {
                 calc_sphere_BVH(cl, r, t, s_num, is_shadow_ray);
@@ -368,7 +379,9 @@ bool ray_triangle_intersect(Ray& r, double& t, Triangle& tri, glm::dvec3& baryce
 
 // VBVH tree search for triangle intersection
 void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& barycentric, bool is_shadow_ray) {
+    
     if (BVHTriangle.isChild[cur]) {
+        //printf("child %d\n", cur);
         for (int i = 0; i < BVHTriangle.childs[cur].size(); i++) {
             if (ray_triangle_intersect(r, t, triangles[BVHTriangle.childs[cur][i]], barycentric)) {
                 t_num = BVHTriangle.childs[cur][i];
@@ -379,10 +392,20 @@ void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& baryc
         }
     }
     else {
+        //printf("cur %d\n", cur);
+        //print(BVHTriangle.boxList[cur].p[0], "OBB0");
+        //print(BVHTriangle.boxList[cur].p[1], "OBB1");
+        //print(BVHTriangle.boxList[cur].rot[0], "OBB");
         double t0 = t, t1 = t;
         int cl = BVHTriangle.childs[cur][0], cr = BVHTriangle.childs[cur][1];
-        bool il = ray_bb_intersect(r, t0, BVHTriangle.boxList[cl]);
-        bool ir = ray_bb_intersect(r, t1, BVHTriangle.boxList[cr]);
+        Ray rl, rr;
+        rl.origin = r.origin * BVHTriangle.boxList[cl].invrot;
+        rl.direction = r.direction * BVHTriangle.boxList[cl].invrot;
+        rr.origin = r.origin * BVHTriangle.boxList[cr].invrot;
+        rr.direction = r.direction * BVHTriangle.boxList[cr].invrot;
+        bool il = ray_bb_intersect(rl, t0, BVHTriangle.boxList[cl]);
+        bool ir = ray_bb_intersect(rr, t1, BVHTriangle.boxList[cr]);
+        //printf("%d %d\n", il, ir);
         if (il && ir) {
             if (t0 < t1) {
                 calc_triangle_BVH(cl, r, t, t_num, barycentric, is_shadow_ray);
@@ -408,7 +431,9 @@ void calc_triangle_BVH(int cur, Ray& r, double& t, int& t_num, glm::dvec3& baryc
 void calc_triangle(Ray& r, double& t, int& t_num, glm::dvec3& barycentric, bool is_shadow_ray) {
 
     if (useBVH) {
+        //printf("start bvh search\n");
         calc_triangle_BVH(0, r, t, t_num, barycentric, is_shadow_ray);
+        //printf("end bvh search\n");
     }
     else {
         for (int i = 0; i < num_triangles; i++) {
@@ -758,8 +783,6 @@ void draw_scene()
 
     current_time = glutGet(GLUT_ELAPSED_TIME) * 0.001 - current_time;
     printf("Cost time: %f s\n", current_time);
-    printf("Cost time S: %f s\n", totSphereTime);
-    printf("Cost time T: %f s\n", totTriangleTime);
     printf("Total triangle intersection %lld\n", timesOfTriangleIntersect);
     printf("Total sphere intersection %lld\n", timesOfSphereIntersect);
     if (useBVH) {
@@ -1079,15 +1102,51 @@ void initAreaLight() {
     num_lights = newLights.size();
 }
 
-int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList, vector<glm::dvec3>& center) {
+glm::dmat3 getEigenvector(vector<glm::dvec3> ve) {
+    Eigen::Matrix3d X = Eigen::Matrix3d::Zero();
+    vector<Eigen::Vector3d> vp;
+    for (int i = 0; i < ve.size(); i++) {
+        vp.push_back(Eigen::Vector3d(ve[i][0], ve[i][1], ve[i][2]));
+    }
+    Eigen::Vector3d xmid = Eigen::Vector3d::Zero();
+    for (int i = 0; i < vp.size(); i++) {
+        xmid += vp[i];
+    }
+    xmid /= (1.0 * vp.size());
+    for (int i = 0; i < vp.size(); i++) {
+        vp[i] -= xmid;
+        Eigen::Matrix3d Y = vp[i] * vp[i].transpose();
+        X = X + Y;
+    }
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(X, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+    //std::cout << "U matrix is:\n" << svd.matrixU() << std::endl;
+    //std::cout << "Singular values are:\n" << svd.singularValues() << std::endl;
+    //std::cout << "V^T matrix is:\n" << svd.matrixV().transpose() << std::endl;
+
+    glm::dmat3 x;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            x[i][j] = svd.matrixU()(j, i);
+        }
+    }
+    return x;
+}
+
+int buildBVHTriangle(BVHTree& tree, vector<int> vx, vector<glm::dvec3>& center) {
     BVHBoundBox bb;
+    vector<glm::dvec3> vcenter;
+    for (int i = 0; i < vx.size(); i++) {
+        vcenter.push_back(center[vx[i]]);
+    }
+    bb.rot = getEigenvector(vcenter);
+    bb.invrot = glm::transpose(bb.rot);
     bb.p[0] = glm::dvec3(infinity);
     bb.p[1] = glm::dvec3(-infinity);
-
     for (int i = 0; i < vx.size(); i++) {
         for (int j = 0; j < 3; j++) {
-            bb.p[0] = glm::min(bb.p[0], bbList[vx[i]][0]);
-            bb.p[1] = glm::max(bb.p[1], bbList[vx[i]][1]);
+            bb.p[0] = glm::min(bb.p[0], triangles[vx[i]].v[j].position * bb.invrot);
+            bb.p[1] = glm::max(bb.p[1], triangles[vx[i]].v[j].position * bb.invrot);
         }
     }
     if (vx.size() <= 3) {
@@ -1101,6 +1160,8 @@ int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList,
         return tree.size - 1;
     }
     else {
+        //printf(" tree size %d\n", tree.size);
+
         tree.size++;
         tree.boxList.push_back(bb);
         tree.isChild.push_back(false);
@@ -1109,19 +1170,20 @@ int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList,
         glm::dvec3 dif = bb.p[1] - bb.p[0];
         // Find the axis with maximum difference
         int axis = 0;
-        if (dif[0] > dif[1]) {
-            if (dif[0] > dif[2]) axis = 0;
-            else axis = 2;
-        }
-        else {
-            if (dif[1] > dif[2]) axis = 1;
-            else axis = 2;
-        }
+        //if (dif[0] > dif[1]) {
+        //    if (dif[0] > dif[2]) axis = 0;
+        //    else axis = 2;
+        //}
+        //else {
+        //    if (dif[1] > dif[2]) axis = 1;
+        //    else axis = 2;
+        //}
+
 
         // Sort them with axis
         vector<pair<double, int> > vxp(vx.size());
         for (int i = 0; i < vx.size(); i++) {
-            vxp[i].first = center[vx[i]][axis];
+            vxp[i].first = (center[vx[i]] * bb.invrot)[axis];
             vxp[i].second = vx[i];
         }
         sort(vxp.begin(), vxp.end());
@@ -1130,13 +1192,7 @@ int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList,
         }
 
         int pc = vxp.size() / 2;
-        // double mid=(vxp[vxp.size()-1].first+vxp[0].first)*0.5;
-        // for(int i=0;i<vxp.size();i++){
-        //     if(vxp[i].first>=mid){
-        //         pc=max(i,1);
-        //         break;
-        //     }
-        // }
+
         vxp.clear();
         vector<int> vl, vr;
         for (int i = 0; i < pc; i++) {
@@ -1147,9 +1203,9 @@ int buildBVH(BVHTree& tree, vector<int> vx, vector<vector<glm::dvec3> >& bbList,
         }
 
         vx.clear();
-        int left = buildBVH(tree, vl, bbList, center);
+        int left = buildBVHTriangle(tree, vl, center);
         tree.childs[cur].push_back(left);
-        int right = buildBVH(tree, vr, bbList, center);
+        int right = buildBVHTriangle(tree, vr, center);
         tree.childs[cur].push_back(right);
         return cur;
     }
@@ -1161,34 +1217,120 @@ void initBVHTriangle() {
     vector<glm::dvec3> center;
     for (int i = 0; i < num_triangles; i++) {
         va.push_back(i);
-        vector<glm::dvec3> bb(2, triangles[i].v[0].position);
         glm::dvec3 p(0.0, 0.0, 0.0);
         for (int j = 0; j < 3; j++) {
-            bb[0] = glm::min(bb[0], triangles[i].v[j].position);
-            bb[1] = glm::max(bb[1], triangles[i].v[j].position);
             p += triangles[i].v[j].position / 3.0;
         }
-        bbList.push_back(bb);
         center.push_back(p);
     }
 
-    buildBVH(BVHTriangle, va, bbList, center);
+    buildBVHTriangle(BVHTriangle, va, center);
     printf("End Building BVH\n");
+}
+
+
+int buildBVHSphere(BVHTree& tree, vector<int> vx, vector<glm::dvec3>& center) {
+    BVHBoundBox bb;
+    if (vx.size() == 0) {
+        tree.boxList.push_back(bb);
+        tree.isChild.push_back(true);
+        tree.childs.push_back(vector<int>());
+        return 0;
+    }
+    vector<glm::dvec3> vcenter;
+    for (int i = 0; i < vx.size(); i++) {
+        vcenter.push_back(center[vx[i]]);
+    }
+    bb.rot = getEigenvector(vcenter);
+    bb.invrot = glm::transpose(bb.rot);
+    bb.p[0] = glm::dvec3(infinity);
+    bb.p[1] = glm::dvec3(-infinity);
+    for (int i = 0; i < vx.size(); i++) {
+        bb.p[0] = glm::min(bb.p[0], (spheres[vx[i]].position - spheres[vx[i]].radius) * bb.invrot);
+        bb.p[1] = glm::max(bb.p[1], (spheres[vx[i]].position + spheres[vx[i]].radius) * bb.invrot);
+    }
+
+    if (vx.size() <= 3) {
+        tree.boxList.push_back(bb);
+        tree.isChild.push_back(true);
+        tree.childs.push_back(vector<int>());
+        //printf("%d\n", tree.size);
+        //for (int i = 0; i < 3; i++) {
+        //    for (int j = 0; j < 3; j++) {
+        //        printf("%f ", tree.boxList[tree.size].invrot[i][j]);
+        //    }printf("\n");
+        //}
+        for (int i = 0; i < vx.size(); i++) {
+            tree.childs[tree.size].push_back(vx[i]);
+        }
+        tree.size++;
+        return tree.size - 1;
+    }
+    else {
+
+        tree.size++;
+        tree.boxList.push_back(bb);
+        //printf("%d\n", tree.size);
+        //for (int i = 0; i < 3; i++) {
+        //    for (int j = 0; j < 3; j++) {
+        //        printf("%f ", tree.boxList[tree.size-1].invrot[i][j]);
+        //    }printf("\n");
+        //}
+        tree.isChild.push_back(false);
+        tree.childs.push_back(vector<int>());
+        int cur = tree.size - 1;
+        glm::dvec3 dif = bb.p[1] - bb.p[0];
+        // Find the axis with maximum difference
+        int axis = 0;
+        //if (dif[0] > dif[1]) {
+        //    if (dif[0] > dif[2]) axis = 0;
+        //    else axis = 2;
+        //}
+        //else {
+        //    if (dif[1] > dif[2]) axis = 1;
+        //    else axis = 2;
+        //}
+
+
+        // Sort them with axis
+        vector<pair<double, int> > vxp(vx.size());
+        for (int i = 0; i < vx.size(); i++) {
+            vxp[i].first = (center[vx[i]] * bb.invrot)[axis];
+            vxp[i].second = vx[i];
+        }
+        sort(vxp.begin(), vxp.end());
+        for (int i = 0; i < vxp.size(); i++) {
+            vx[i] = vxp[i].second;
+        }
+
+        int pc = vxp.size() / 2;
+
+        vxp.clear();
+        vector<int> vl, vr;
+        for (int i = 0; i < pc; i++) {
+            vl.push_back(vx[i]);
+        }
+        for (int i = pc; i < vx.size(); i++) {
+            vr.push_back(vx[i]);
+        }
+
+        vx.clear();
+        int left = buildBVHSphere(tree, vl, center);
+        tree.childs[cur].push_back(left);
+        int right = buildBVHSphere(tree, vr, center);
+        tree.childs[cur].push_back(right);
+        return cur;
+    }
 }
 
 void initBVHSphere() {
     vector<int> va;
-    vector<vector<glm::dvec3> > bbList;
     vector<glm::dvec3> center;
     for (int i = 0; i < num_spheres; i++) {
         va.push_back(i);
-        vector<glm::dvec3> bb(2, glm::dvec3(0.0, 0.0, 0.0));
-        bb[0] = spheres[i].position - spheres[i].radius;
-        bb[1] = spheres[i].position + spheres[i].radius;
-        bbList.push_back(bb);
         center.push_back(spheres[i].position);
     }
-    buildBVH(BVHSphere, va, bbList, center);
+    buildBVHSphere(BVHSphere, va, center);
 }
 
 // Calculate the total triangle area
@@ -1246,44 +1388,8 @@ void generateScene() {
     exit(0);
 }
 
-void test() {
-    Eigen::Matrix3d X = Eigen::Matrix3d::Zero();
-    vector<Eigen::Vector3d> vp = { Eigen::Vector3d(0,0,0),Eigen::Vector3d(0,4,6),Eigen::Vector3d(0,6,4) };
-    Eigen::Vector3d xmid = Eigen::Vector3d::Zero();
-    for (int i = 0; i < vp.size(); i++) {
-        xmid += vp[i];
-    }
-    xmid /= (1.0 * vp.size());
-    for (int i = 0; i < vp.size(); i++) {
-        vp[i] -= xmid;
-        Eigen::Matrix3d Y = vp[i] * vp[i].transpose();
-        X = X + Y;
-    }
-    cout << X << "\n";
-    Eigen::JacobiSVD<Eigen::Matrix3d> svd(X, Eigen::ComputeFullU | Eigen::ComputeFullV);
-
-    std::cout << "U matrix is:\n" << svd.matrixU() << std::endl;
-    std::cout << "Singular values are:\n" << svd.singularValues() << std::endl;
-    std::cout << "V^T matrix is:\n" << svd.matrixV().transpose() << std::endl;
-
-    cout << svd.matrixU() * svd.matrixU().transpose() << "\n";
-
-    cout << "VP1: " << vp[1] << "\n\n VP2: " << vp[2] << "\n";
-
-    cout << svd.matrixU().transpose() * svd.matrixU() * vp[1] << "\n\n" << svd.matrixU().transpose() * svd.matrixU() * vp[2] << "\n";
-    //glm::dmat3 x;
-    //for (int i = 0; i < 3; i++) {
-    //    for (int j = 0; j < 3; j++) {
-    //        x[i][j] = svd.matrixU()(j, i);
-    //    }
-    //}
-
-    exit(0);
-}
-
 int main(int argc, char** argv)
 {
-    //test();
     //generateScene();
     if ((argc < 2) || (argc > 3)) {
         printf("Usage: %s <input scenefile> [output jpegname]\n", argv[0]);
