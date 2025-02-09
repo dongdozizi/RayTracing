@@ -22,8 +22,8 @@ The project is to build a ray tracer which handle opaque surfaces with lighting 
 
 ![snowMonteCarlo](hw3-starterCode/otherImages/snowMonteCarlo.jpg)
 
-![spherePyramidMonteCarlo](w3-starterCode/otherImages/spherePyramidMonteCarlo.jpg)
+![spherePyramidMonteCarlo](hw3-starterCode/otherImages/spherePyramidMonteCarlo.jpg)
 
-![spheresAntiSoftRecur](w3-starterCode/otherImages/spheresAntiSoftRecur.jpg.jpg)
+![spheresAntiSoftRecur](hw3-starterCode/otherImages/spheresAntiSoftRecur.jpg.jpg)
 
-![test2MonteCarlo](w3-starterCode/otherImages/test2MonteCarlo.jpg)
+![test2MonteCarlo](hw3-starterCode/otherImages/test2MonteCarlo.jpg)
