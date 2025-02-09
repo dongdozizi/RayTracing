@@ -6,17 +6,17 @@ The project is to build a ray tracer which handle opaque surfaces with lighting 
 
 ## Features
 
-  Recursive ray tracing triangles/sphere 
-  
-  Phong shading
-  
-  Antialiasing by by average the value of subpixels
-  
-  Soft shadow by generate sublights
-  
-  Multithread MonteCarlo sampling
-  
-  BVH tree for speed up calculation
+ - Recursive ray tracing triangles/sphere 
+
+ - Phong shading
+
+ - Antialiasing by by average the value of subpixels
+
+ - Soft shadow by generate sublights
+
+ - Multithread MonteCarlo sampling
+
+ - BVH tree for speed up calculation
 
 ## Results
 
